@@ -1,7 +1,7 @@
 locals{
   image_name = "test-nginx"
   key_pair_name = "LabKey"
-  instance_type = "t2.micro"
+  instance_type = "t2.medium"
   ami_id = "ami-0574da719dca65348"
   instance_tags = {
       Name = "K8s-Ubuntu-Instance"
