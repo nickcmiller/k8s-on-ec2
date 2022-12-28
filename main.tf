@@ -1,17 +1,14 @@
-locals{
-  image_name = "test-nginx"
+locals {
   key_pair_name = "LabKey"
   instance_type = "t2.medium"
-  ami_id = "ami-0574da719dca65348"
-  instance_tags = {
-      Name = "K8s-Ubuntu-Instance"
-  }
-  
+  ami_id        = "ami-0574da719dca65348"
+  cluster_name  = "K8s-Cluster"
+
 }
 
-resource "aws_security_group" "allow_ssh_http" {
-  name        = "allow_ssh_http"
-  description = "Allow SSH and HTTP inbound traffic"
+resource "aws_security_group" "k8s_security_group" {
+  name        = "k8s-security-group"
+  description = "Security Group for Kubernetes"
 
   ingress {
     description      = "SSH access"
@@ -21,7 +18,7 @@ resource "aws_security_group" "allow_ssh_http" {
     cidr_blocks      = ["0.0.0.0/0"]
     ipv6_cidr_blocks = ["::/0"]
   }
-  
+
   ingress {
     description      = "HTTP access"
     from_port        = 80
@@ -29,6 +26,63 @@ resource "aws_security_group" "allow_ssh_http" {
     protocol         = "tcp"
     cidr_blocks      = ["0.0.0.0/0"]
     ipv6_cidr_blocks = ["::/0"]
+  }
+
+  ingress {
+    description = "External Services"
+    from_port   = 30000
+    to_port     = 32767
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  ingress {
+    description = "Allow k8s API"
+    from_port   = 6443
+    to_port     = 6443
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+    self        = true
+  }
+
+  ingress {
+    description = "ETCD"
+    from_port   = 2379
+    to_port     = 2380
+    protocol    = "tcp"
+    self        = true
+  }
+
+  ingress {
+    description = "Kube Scheduler"
+    from_port   = 10251
+    to_port     = 10251
+    protocol    = "tcp"
+    self        = true
+  }
+
+  ingress {
+    description = "Read only kubelet API"
+    from_port   = 10255
+    to_port     = 10255
+    protocol    = "tcp"
+    self        = true
+  }
+
+  ingress {
+    description = "kubelet health check"
+    from_port   = 10250
+    to_port     = 10250
+    protocol    = "tcp"
+    self        = true
+  }
+
+  ingress {
+    description = "Kube Control Manager"
+    from_port   = 10252
+    to_port     = 10252
+    protocol    = "tcp"
+    self        = true
   }
 
   egress {
@@ -42,23 +96,55 @@ resource "aws_security_group" "allow_ssh_http" {
   tags = {
     Name = "allow_ssh_http"
   }
-  
-  lifecycle{
+
+  lifecycle {
     create_before_destroy = true
   }
 }
 
-resource "aws_instance" "ec2_instance" {
-    instance_type = local.instance_type
-    ami = local.ami_id
-    tags = local.instance_tags
-    key_name = local.key_pair_name
-    user_data = "${path.module}/userdata.sh"
-    security_groups = ["${aws_security_group.allow_ssh_http.name}"]
-    depends_on = [aws_security_group.allow_ssh_http]
+resource "aws_instance" "control_plane_node" {
+  instance_type = local.instance_type
+  ami           = local.ami_id
+  tags = {
+    Name = "${local.cluster_name}-control_plane"
+  }
+  key_name        = local.key_pair_name
+  security_groups = ["${aws_security_group.k8s_security_group.name}"]
+  depends_on      = [aws_security_group.k8s_security_group]
 }
 
-output "ec2_connection_script"{
-    value = "ssh -i '${local.key_pair_name}.pem' ubuntu@${aws_instance.ec2_instance.public_dns}"
-    
+resource "aws_instance" "worker_node" {
+  count         = 2
+  instance_type = local.instance_type
+  ami           = local.ami_id
+  tags = {
+    Name = "${local.cluster_name}-worker-node-${count.index}"
+  }
+  key_name        = local.key_pair_name
+  security_groups = ["${aws_security_group.k8s_security_group.name}"]
+  depends_on      = [aws_security_group.k8s_security_group]
 }
+
+
+resource "aws_network_interface" "test" {
+  subnet_id         = "subnet-c583baa2"
+  ipv4_prefix_count = 2
+}
+
+output "control_plane_connection_script" {
+  value = "ssh -i '${local.key_pair_name}.pem' ubuntu@${aws_instance.control_plane_node.public_dns}"
+}
+
+output "work_node_dns" {
+  value = aws_instance.worker_node.*.public_dns
+}
+
+
+output "control_plane_ip" {
+  value = aws_instance.control_plane_node.private_ip
+}
+
+output "work_node_ip" {
+  value = aws_instance.worker_node.*.private_ip
+}
+
