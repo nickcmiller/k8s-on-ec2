@@ -54,6 +54,14 @@ resource "aws_security_group" "k8s_security_group" {
   }
 
   ingress {
+    description = "healthz"
+    from_port   = 10248
+    to_port     = 10248
+    protocol    = "tcp"
+    self        = true
+  }
+
+  ingress {
     description = "Kube Scheduler"
     from_port   = 10251
     to_port     = 10251
@@ -110,6 +118,7 @@ resource "aws_instance" "control_plane_node" {
   }
   key_name        = local.key_pair_name
   security_groups = ["${aws_security_group.k8s_security_group.name}"]
+  # user_data       = file("${path.module}/controlplanescript.sh")
   depends_on      = [aws_security_group.k8s_security_group]
 }
 
@@ -147,4 +156,3 @@ output "control_plane_ip" {
 output "work_node_ip" {
   value = aws_instance.worker_node.*.private_ip
 }
-
