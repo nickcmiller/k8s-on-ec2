@@ -1,21 +1,51 @@
+#Useful breakdown: https://serverfault.com/questions/1118051/failed-to-run-kubelet-validate-service-connection-cri-v1-runtime-api-is-not-im
+
 #Set up hostnames
 # sudo hostnamectl set-hostname k8s-control
 # sudo hostnamectl set-hostname k8s-worker1
 # sudo hostnamectl set-hostname k8s-worker2
 
+# Master
+# firewall-cmd --permanent --add-port=6443/tcp # Kubernetes API server
+# firewall-cmd --permanent --add-port=2379-2380/tcp # etcd server client API
+# firewall-cmd --permanent --add-port=10250/tcp # Kubelet API
+# firewall-cmd --permanent --add-port=10251/tcp # kube-scheduler
+# firewall-cmd --permanent --add-port=10252/tcp # kube-controller-manager
+# firewall-cmd --permanent --add-port=8285/udp # Flannel
+# firewall-cmd --permanent --add-port=8472/udp # Flannel
+# firewall-cmd --add-masquerade --permanent
+# # only if you want NodePorts exposed on control plane IP as well
+# firewall-cmd --permanent --add-port=30000-32767/tcp
+# firewall-cmd --reload
+# systemctl restart firewalld
+
+
+# # Node
+# firewall-cmd --permanent --add-port=10250/tcp
+# firewall-cmd --permanent --add-port=8285/udp # Flannel
+# firewall-cmd --permanent --add-port=8472/udp # Flannel
+# firewall-cmd --permanent --add-port=30000-32767/tcp
+# firewall-cmd --add-masquerade --permanent
+# firewall-cmd --reload
+# systemctl restart firewalld
+
+
 #Set up hostfiles
-# cat << EOF >> /etc/hosts
-# 172.31.3.204 k8s-control
-# 172.31.59.55 k8s-worker1
-# 172.31.53.64 k8s-worker2
-# EOF
+cat << EOF >> /etc/hosts
+172.31.82.164 k8s-control
+172.31.87.133 k8s-worker1
+172.31.95.175 k8s-worker2
+EOF
 
 # Kubeadm | kubectl | kubelet install
-curl -s https://packages.cloud.google.com/apt/doc/apt-key.gpg | sudo apt-key add -
-echo "deb https://apt.kubernetes.io/ kubernetes-xenial main" | sudo tee /etc/apt/sources.list.d/kubernetes.list
+curl -s https://packages.cloud.google.com/apt/doc/apt-key.gpg | apt-key add -
+echo "deb https://apt.kubernetes.io/ kubernetes-xenial main" | tee /etc/apt/sources.list.d/kubernetes.list
 apt update -y
 apt -y install vim git curl wget kubelet=1.26.0-00 kubeadm=1.26.0-00 kubectl=1.26.0-00
 apt-mark hold kubelet kubeadm kubectl
+
+#Start and enable the kubelet service
+systemctl enable --now kubelet
 
 #Load the br_netfilter module and let iptables see bridged traffic
 modprobe overlay
@@ -25,6 +55,8 @@ net.bridge.bridge-nf-call-ip6tables = 1
 net.bridge.bridge-nf-call-iptables = 1
 net.ipv4.ip_forward = 1
 EOF
+
+# Apply new settings
 sysctl --system
 
 # Create configuration files for Containerd
@@ -44,42 +76,44 @@ net.bridge.bridge-nf-call-iptables = 1
 net.ipv4.ip_forward = 1
 EOF
 
-# Apply new settings:
+# Apply new settings
 sysctl --system
 
 #Install and configure containerd 
 curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo apt-key add -
-sudo add-apt-repository "deb [arch=amd64] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable" -y
-sudo apt update -y
-sudo apt install -y containerd.io
-sudo mkdir -p /etc/containerd
-containerd config default | sudo tee /etc/containerd/config.toml
+add-apt-repository "deb [arch=amd64] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable" -y
+apt update -y
+apt install -y containerd.io
+mkdir -p /etc/containerd
+containerd config default | tee /etc/containerd/config.toml
 
 #Start containerd
-sudo systemctl restart containerd
-sudo systemctl enable containerd
+systemctl restart containerd
+systemctl enable containerd
 
-sudo kubeadm config images pull --image-repository=registry.k8s.io --cri-socket unix:///run/containerd/containerd.sock --kubernetes-version v1.26.0
+#download images required to setup Kubernetes
+kubeadm config images pull --image-repository=registry.k8s.io --cri-socket unix:///run/containerd/containerd.sock --kubernetes-version v1.26.0
 
 #Possible debug step
-#echo 1 > /proc/sys/net/ipv4/ip_forward
+echo 1 > /proc/sys/net/ipv4/ip_forward
+
+# Disable swap
+swapoff -a
 
 -------------
 
-# Initialize the Kubernetes cluster on the control plane node using kubeadm (Note: This is only performed on the Control Plane Node):
-sudo kubeadm init --pod-network-cidr=10.244.0.0/16 --kubernetes-version=v1.26.0 --cri-socket unix:///run/containerd/containerd.sock
+# Initialize the Kubernetes cluster on the control plane node using kubeadm
+kubeadm init --pod-network-cidr=10.244.0.0/16 --kubernetes-version=v1.26.0 --cri-socket unix:///run/containerd/containerd.sock
 
-# Set kubectl access through kube config:
-sudo mkdir -p $HOME/.kube
-sudo cp -i /etc/kubernetes/admin.conf $HOME/.kube/config
-sudo chown $(id -u):$(id -g) $HOME/.kube/config
+#Allow kubectl to interact with the cluster
+mkdir -p $HOME/.kube
+cp -i /etc/kubernetes/admin.conf $HOME/.kube/config
+chown $(id -u):$(id -g) $HOME/.kube/config
 export KUBECONFIG=/etc/kubernetes/admin.conf
 
-# Disable swap:
-swapoff -a
-
 #Install CNI Flannel
-kubectl apply -f https://github.com/coreos/flannel/raw/master/Documentation/kube-flannel.yml
+kubectl apply -f https://raw.githubusercontent.com/flannel-io/flannel/v0.20.2/Documentation/kube-flannel.yml
+#kubectl apply -f https://github.com/coreos/flannel/raw/master/Documentation/kube-flannel.yml
 
 #Test step
 # kubectl get nodes
@@ -87,9 +121,9 @@ kubectl apply -f https://github.com/coreos/flannel/raw/master/Documentation/kube
 -------------------------
 
 #Troubleshooting
-# systemctl stop kubelet
-# systemctl start kubelet
-# strace -eopenat kubectl version
+systemctl stop kubelet
+systemctl start kubelet
+strace -eopenat kubectl version
 
 
 # In the control plane node, create the token and copy the kubeadm join command (NOTE:The join command can also be found in the output from kubeadm init command):

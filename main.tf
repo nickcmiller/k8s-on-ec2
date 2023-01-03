@@ -7,8 +7,8 @@ locals {
 }
 
 resource "aws_security_group" "k8s_security_group" {
-  name        = "k8s-security-group"
-  description = "Security Group for Kubernetes"
+  name        = "MyKubernetesClusterSG"
+  description = "Security Group for Kubernetes Cluster"
 
   ingress {
     description      = "SSH access"
@@ -54,9 +54,17 @@ resource "aws_security_group" "k8s_security_group" {
   }
 
   ingress {
-    description = "healthz"
+    description = "Health Check"
     from_port   = 10248
     to_port     = 10248
+    protocol    = "tcp"
+    self        = true
+  }
+  
+   ingress {
+    description = "kubelet health check"
+    from_port   = 10250
+    to_port     = 10250
     protocol    = "tcp"
     self        = true
   }
@@ -70,25 +78,17 @@ resource "aws_security_group" "k8s_security_group" {
   }
 
   ingress {
-    description = "Read only kubelet API"
-    from_port   = 10255
-    to_port     = 10255
-    protocol    = "tcp"
-    self        = true
-  }
-
-  ingress {
-    description = "kubelet health check"
-    from_port   = 10250
-    to_port     = 10250
-    protocol    = "tcp"
-    self        = true
-  }
-
-  ingress {
     description = "Kube Control Manager"
     from_port   = 10252
     to_port     = 10252
+    protocol    = "tcp"
+    self        = true
+  }
+  
+  ingress {
+    description = "Read only kubelet API"
+    from_port   = 10255
+    to_port     = 10255
     protocol    = "tcp"
     self        = true
   }
@@ -100,9 +100,9 @@ resource "aws_security_group" "k8s_security_group" {
     cidr_blocks      = ["0.0.0.0/0"]
     ipv6_cidr_blocks = ["::/0"]
   }
-
+  
   tags = {
-    Name = "allow_ssh_http"
+    Name = "MyKubernetesClusterSG"
   }
 
   lifecycle {
@@ -132,12 +132,6 @@ resource "aws_instance" "worker_node" {
   key_name        = local.key_pair_name
   security_groups = ["${aws_security_group.k8s_security_group.name}"]
   depends_on      = [aws_security_group.k8s_security_group]
-}
-
-
-resource "aws_network_interface" "test" {
-  subnet_id         = "subnet-c583baa2"
-  ipv4_prefix_count = 2
 }
 
 output "control_plane_connection_script" {
