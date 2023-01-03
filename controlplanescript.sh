@@ -1,5 +1,4 @@
 #Useful breakdown: 
-
 #https://serverfault.com/questions/1118051/failed-to-run-kubelet-validate-service-connection-cri-v1-runtime-api-is-not-im
 #https://thenewstack.io/how-to-deploy-kubernetes-with-kubeadm-and-containerd/
 
@@ -8,47 +7,48 @@
 # sudo hostnamectl set-hostname k8s-worker1
 # sudo hostnamectl set-hostname k8s-worker2
 
+
+apt install -y firewalld
 # Master
-# firewall-cmd --permanent --add-port=6443/tcp # Kubernetes API server
-# firewall-cmd --permanent --add-port=2379-2380/tcp # etcd server client API
-# firewall-cmd --permanent --add-port=10250/tcp # Kubelet API
-# firewall-cmd --permanent --add-port=10251/tcp # kube-scheduler
-# firewall-cmd --permanent --add-port=10252/tcp # kube-controller-manager
-# firewall-cmd --permanent --add-port=8285/udp # Flannel
-# firewall-cmd --permanent --add-port=8472/udp # Flannel
-# firewall-cmd --add-masquerade --permanent
-# # only if you want NodePorts exposed on control plane IP as well
-# firewall-cmd --permanent --add-port=30000-32767/tcp
-# firewall-cmd --reload
-# systemctl restart firewalld
+firewall-cmd --permanent --add-port=6443/tcp # Kubernetes API server
+firewall-cmd --permanent --add-port=2379-2380/tcp # etcd server client API
+firewall-cmd --permanent --add-port=10250/tcp # Kubelet API
+firewall-cmd --permanent --add-port=10251/tcp # kube-scheduler
+firewall-cmd --permanent --add-port=10252/tcp # kube-controller-manager
+firewall-cmd --permanent --add-port=8285/udp # Flannel
+firewall-cmd --permanent --add-port=8472/udp # Flannel
+firewall-cmd --add-masquerade --permanent
+# only if you want NodePorts exposed on control plane IP as well
+firewall-cmd --permanent --add-port=30000-32767/tcp
+firewall-cmd --reload
+systemctl restart firewalld
 
 
 # # Node
-# firewall-cmd --permanent --add-port=10250/tcp
-# firewall-cmd --permanent --add-port=8285/udp # Flannel
-# firewall-cmd --permanent --add-port=8472/udp # Flannel
-# firewall-cmd --permanent --add-port=30000-32767/tcp
-# firewall-cmd --add-masquerade --permanent
-# firewall-cmd --reload
-# systemctl restart firewalld
+firewall-cmd --permanent --add-port=10250/tcp
+firewall-cmd --permanent --add-port=8285/udp # Flannel
+firewall-cmd --permanent --add-port=8472/udp # Flannel
+firewall-cmd --permanent --add-port=30000-32767/tcp
+firewall-cmd --add-masquerade --permanent
+firewall-cmd --reload
+systemctl restart firewalld
 
 
 #Set up hostfiles
 cat << EOF >> /etc/hosts
-172.31.82.164 k8s-control
+172.31.91.104 k8s-control
 172.31.87.133 k8s-worker1
 172.31.95.175 k8s-worker2
 EOF
 
-# Kubeadm | kubectl | kubelet install
+# Kubeadm | kubectl | kubelet| kubernetes-cni install
+apt-get update -y
+apt install -y apt-transport-https curl vim git wget
 curl -s https://packages.cloud.google.com/apt/doc/apt-key.gpg | apt-key add -
 echo "deb https://apt.kubernetes.io/ kubernetes-xenial main" | tee /etc/apt/sources.list.d/kubernetes.list
 apt update -y
-apt -y install vim git curl wget kubelet=1.26.0-00 kubeadm=1.26.0-00 kubectl=1.26.0-00
+apt -y install kubelet=1.26.0-00 kubeadm=1.26.0-00 kubectl=1.26.0-00 kubernetes-cni
 apt-mark hold kubelet kubeadm kubectl
-
-#Start and enable the kubelet service
-systemctl enable --now kubelet
 
 #Load the br_netfilter module and let iptables see bridged traffic
 modprobe overlay
@@ -82,6 +82,9 @@ EOF
 # Apply new settings
 sysctl --system
 
+#enable IP forwarding
+echo 1 > /proc/sys/net/ipv4/ip_forward
+
 #Install and configure containerd 
 curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo apt-key add -
 add-apt-repository "deb [arch=amd64] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable" -y
@@ -97,13 +100,12 @@ systemctl enable containerd
 #download images required to setup Kubernetes
 kubeadm config images pull --image-repository=registry.k8s.io --cri-socket unix:///run/containerd/containerd.sock --kubernetes-version v1.26.0
 
-#Possible debug step
-echo 1 > /proc/sys/net/ipv4/ip_forward
-
 # Disable swap
 swapoff -a
 
 -------------
+#Start and enable the kubelet service
+systemctl enable --now kubelet
 
 # Initialize the Kubernetes cluster on the control plane node using kubeadm
 kubeadm init --pod-network-cidr=10.244.0.0/16 --kubernetes-version=v1.26.0 --cri-socket unix:///run/containerd/containerd.sock
