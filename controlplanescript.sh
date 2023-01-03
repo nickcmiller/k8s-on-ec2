@@ -1,4 +1,6 @@
-#Useful breakdown: https://serverfault.com/questions/1118051/failed-to-run-kubelet-validate-service-connection-cri-v1-runtime-api-is-not-im
+#Useful breakdown: 
+#https://serverfault.com/questions/1118051/failed-to-run-kubelet-validate-service-connection-cri-v1-runtime-api-is-not-im
+#https://thenewstack.io/how-to-deploy-kubernetes-with-kubeadm-and-containerd/
 
 #Set up hostnames
 # sudo hostnamectl set-hostname k8s-control
