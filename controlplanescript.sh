@@ -36,7 +36,7 @@ systemctl restart firewalld
 
 #Set up hostfiles
 cat << EOF >> /etc/hosts
-172.31.91.104 k8s-control
+172.31.6.93 k8s-control
 172.31.87.133 k8s-worker1
 172.31.95.175 k8s-worker2
 EOF
@@ -93,12 +93,16 @@ apt install -y containerd.io
 mkdir -p /etc/containerd
 containerd config default | tee /etc/containerd/config.toml
 
+# sudo vim /etc/containerd/config.toml #set SystemdCgroup = true
+# sudo systemctl restart containerd
+
 #Start containerd
 systemctl restart containerd
 systemctl enable containerd
 
 #download images required to setup Kubernetes
-kubeadm config images pull --image-repository=registry.k8s.io --cri-socket unix:///run/containerd/containerd.sock --kubernetes-version v1.26.0
+#kubeadm config images pull --image-repository=registry.k8s.io --cri-socket unix:///run/containerd/containerd.sock --kubernetes-version v1.26.0
+kubeadm config images pull --cri-socket /run/containerd/containerd.sock
 
 # Disable swap
 swapoff -a
@@ -108,7 +112,7 @@ swapoff -a
 systemctl enable --now kubelet
 
 # Initialize the Kubernetes cluster on the control plane node using kubeadm
-kubeadm init --pod-network-cidr=10.244.0.0/16 --kubernetes-version=v1.26.0 --cri-socket unix:///run/containerd/containerd.sock
+kubeadm init --pod-network-cidr=10.244.0.0/16 --upload-certs --kubernetes-version=v1.26.0 --cri-socket unix:///run/containerd/containerd.sock --control-plane-endpoint=k8s-control
 
 #Allow kubectl to interact with the cluster
 mkdir -p $HOME/.kube
