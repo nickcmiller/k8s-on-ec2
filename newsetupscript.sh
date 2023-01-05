@@ -49,11 +49,11 @@ sudo apt install -y kubeadm kubelet kubectl kubernetes-cni
 #disable swap
 sudo swapoff -a
 
-#check if a swap entry exists and remove it if it does
-#sudo vim /etc/fstab
-
 #load the br_netfilter module in the Linux kernel
 sudo modprobe br_netfilter
+
+#check if a swap entry exists and remove it if it does
+#sudo vim /etc/fstab
 
 #enable ip-forwarding 
 sudo su 
