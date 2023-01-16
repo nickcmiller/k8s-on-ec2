@@ -6,9 +6,9 @@ hostnamectl set-hostname k8s-control
 
 #Maps hostnames to IP addresses
 cat << EOF >> /etc/hosts
-172.31.11.145 k8s-control
-172.31.88.11 k8s-worker1
-172.31.94.68 k8s-worker2
+<control-plane-ip> k8s-control
+<worker-node-1-ip> k8s-worker1
+<worker-node-2-ip> k8s-worker2
 EOF
 
 #exit root
